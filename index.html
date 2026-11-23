@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="js/config.js?v=202611171600"></script>
+<script src="js/config.js?v=202611231900"></script>
 <style>
 :root{
   --bg:#F3F4F1;--ink:#16191A;--mut:#545B5E;--line:#D9DCD6;--soft:#ECEEEA;
@@ -269,7 +269,9 @@ var S = {
   pick: null,
   eq: { sel: null, tab: 'dia', date: '', dias: 7, dia: null, hist: null, loading: false, form: null, showForm: false },
   pcp: { q: '', cod: '', data: null, loading: false },
-  np: { art: '', cli: '', ped: '', qtd: '', prazo: '', err: '' },
+  np: { art: '', cli: '', ped: '', qtd: '', prazo: '', obs: '', err: '', edit: null, show: false },
+  cor: null,
+  pl: { list: null, loading: false, ver: '', filt: 'ABERTO', q: '', open: {} },
   fa: { cod: '', cli: '', desc: '', tempo: '', rota: [], err: '', editar: false, filtro: '' },
   usr: { list: null, loading: false, form: null }
 };
@@ -344,7 +346,13 @@ var RPC = {
   salvarArtigo: function (a) { return ['salvar_artigo', { o: a[0] }]; },
   salvarFuncionario: function (a) { return ['salvar_funcionario', { o: a[0] }]; },
   getSessoes: function (a) { return ['sessoes_filtro', { f: a[0] || {} }]; },
-  getArtigo: function (a) { return ['artigo', { p_cod: a[0] }]; }
+  getArtigo: function (a) { return ['artigo', { p_cod: a[0] }]; },
+  editarPedido: function (a) { return ['editar_pedido', { o: a[0] }]; },
+  excluirPedido: function (a) { return ['excluir_pedido', { p_pid: a[0] }]; },
+  corrigirEtapa: function (a) { return ['corrigir_etapa', { o: a[0] }]; },
+  removerSetor: function (a) { return ['remover_setor', { p_id: a[0] }]; },
+  excluirArtigo: function (a) { return ['excluir_artigo', { p_cod: a[0] }]; },
+  excluirFuncionario: function (a) { return ['excluir_funcionario', { p_id: a[0] }]; }
 };
 
 function call(fn) {
@@ -690,6 +698,7 @@ function direct(fn, payload) {
     S.busy = false;
     if (r.ok) toast(r.msg); else toast(r.msg, true);
     if (Q.length || S.sending) S.pending = r.data; else setData(r.data);
+    S.pl.list = null;
     render();
     return r.ok;
   }).catch(function (err) {
@@ -761,8 +770,8 @@ function render() {
 }
 
 function renderTop() {
-  var lista = [['home', 'Setores']];
-  if (tem('pcp')) lista.push(['novo', 'Novo pedido'], ['art', 'Artigos e rotas']);
+  var lista = [['home', 'Setores'], ['novo', 'Pedidos']];
+  if (tem('pcp')) lista.push(['art', 'Artigos e rotas']);
   lista.push(['equipe', 'Equipe'], ['pcp', 'PCP · Artigo']);
   if (tem('admin')) lista.push(['usr', 'Usuários']);
   var tabs = lista.map(function (t) {
@@ -824,7 +833,8 @@ function vUsr() {
     }).join('') + '</div>' +
     (f.editar ? '<label class="f" style="flex-direction:row;align-items:center;gap:10px;font-weight:600;margin-top:14px"><input type="checkbox" id="us-ativo"' + (f.ativo ? ' checked' : '') + ' style="width:22px;height:22px"> Acesso ativo</label>' : '') +
     (f.err ? '<div class="err" role="alert" style="margin-top:12px">' + esc(f.err) + '</div>' : '') +
-    '<button class="btn pri wide" style="margin-top:16px" data-a="usr-salvar"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Salvando…' : 'Salvar') + '</button></div>';
+    '<button class="btn pri wide" style="margin-top:16px" data-a="usr-salvar"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Salvando…' : 'Salvar') + '</button>' +
+    (f.editar && f.id && f.id !== ME.id ? '<button class="btn ghost wide md" style="margin-top:10px;color:var(--rd-ink);border-color:var(--rd-ink)" data-a="usr-remover">Remover acesso ao NASAA</button>' : '') + '</div>';
   h += '<div class="col"><h2 style="font-size:20px">Com acesso <span class="mono muted" style="font-size:16px">' + (U.list ? U.list.length : '') + '</span></h2>';
   if (!U.list) h += '<div class="loading" style="padding:30px 0">Carregando…</div>';
   else h += '<div class="alist">' + U.list.map(function (u) {
@@ -956,7 +966,8 @@ function vSec() {
     h += '<details class="more-sec"><summary>Concluídos neste setor (' + done.length + ')</summary><div class="list">' + done.map(function (e) {
       var p = IX.ped[e.pid];
       return '<div><span class="pill p-done">Concluído</span><b>' + esc(cliName(p)) + ' #' + esc(p.ped) + '</b><span class="mono">' + esc(p.cod) + '</span>' +
-        '<span class="muted">' + e.feitas + ' de ' + p.total + ' pç · tempo ' + fmt(e.acc) + '</span></div>';
+        '<span class="muted">' + e.feitas + ' de ' + p.total + ' pç · tempo ' + fmt(e.acc) + '</span>' +
+        (tem('pcp') ? '<button class="btn ghost sm" style="margin-left:auto;min-height:40px" data-a="reabrir" data-id="' + esc(e.id) + '"' + (S.busy ? ' disabled' : '') + '>Reabrir setor</button>' : '') + '</div>';
     }).join('') + '</div></details>';
   }
 
@@ -1106,6 +1117,7 @@ function orderCard(e) {
       (addable.length ? '<div class="row" style="gap:8px">' + addable.map(function (s) {
         return '<button class="addsec" data-a="add-sec" data-pid="' + esc(p.pid) + '" data-sec="' + esc(s.id) + '">' + I.plus + esc(s.nome) + '</button>';
       }).join('') + '</div>' : '<div style="font-size:14px">Este pedido já passa por todos os setores.</div>') + '</div>';
+    if (tem('pcp')) h += gestaoPanel(e, p);
   }
 
   if (confirming) {
@@ -1123,39 +1135,142 @@ function orderCard(e) {
   return h + '</div>';
 }
 
-/* ---------- Novo pedido ---------- */
-function vNovo() {
-  var d = S.data, f = S.np, a = IX.art[f.art];
+/* ---------- Gestão do pedido dentro do card (PCP) ---------- */
+function gestaoPanel(e, p) {
+  var c = S.cor && S.cor.id === e.id ? S.cor : { id: e.id, qty: String(e.feitas), err: '' };
+  var podeTirar = e.st === 'AGUARDANDO' && !e.feitas && !e.acc && p.rota.length > 1;
+  return '<div class="panel" style="display:block;background:#fff;border:1px solid var(--line)">' +
+    '<strong style="font-size:16px">Corrigir ' + esc(nm(e.sec)) + ' neste pedido</strong>' +
+    '<div class="row" style="margin-top:10px;align-items:flex-end">' +
+    '<div style="display:flex;flex-direction:column;gap:6px"><label for="cor-q" style="font-size:14px;font-weight:700">Peças feitas neste setor</label>' +
+    '<input id="cor-q" type="number" inputmode="numeric" min="0" step="1" value="' + esc(c.qty) + '"></div>' +
+    '<div class="muted grow" style="font-size:14px;padding-bottom:6px">Use para acertar um apontamento errado. O valor substitui o que está lançado (hoje: ' + e.feitas + ' de ' + p.total + ').</div>' +
+    '<button class="btn soft md" data-a="cor-ok" data-id="' + e.id + '"' + (S.busy ? ' disabled' : '') + '>Salvar correção</button></div>' +
+    (c.err ? '<div class="err" role="alert" style="margin-top:8px">' + esc(c.err) + '</div>' : '') +
+    '<div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--soft);gap:8px">' +
+    (podeTirar ? '<button class="btn ghost sm" data-a="tirar-sec" data-id="' + e.id + '">' + I.x + 'Tirar ' + esc(nm(e.sec)) + ' deste pedido</button>' : '') +
+    '<button class="btn ghost sm" data-a="ped-edit" data-pid="' + esc(p.pid) + '">Editar pedido</button>' +
+    '<button class="btn ghost sm" style="color:var(--rd-ink);border-color:var(--rd-ink)" data-a="ped-del" data-pid="' + esc(p.pid) + '">Excluir pedido</button></div></div>';
+}
+
+/* ---------- Pedidos: em produção, histórico, criar, editar e excluir ---------- */
+function loadPedidos() {
+  if (S.pl.loading) return;
+  S.pl.loading = true;
+  sb.rpc('pedidos_lista', { f: {} }).then(function (r) {
+    S.pl.loading = false;
+    if (r.error) { toast(r.error.message, true); S.pl.list = []; } else { S.pl.list = r.data.pedidos || []; S.pl.ver = S.data ? S.data.ver : ''; }
+    if (S.view === 'novo') render();
+  });
+}
+
+function pedForm() {
+  var d = S.data, f = S.np, ed = f.edit ? IX.ped[f.edit] : null;
+  if (f.edit && !ed) { f.edit = null; }
+  var a = IX.art[ed ? ed.cod : f.art];
   var npCli = f.cli || (a ? a.cli : '') || d.clientes[0] || '';
   var cliOpts = d.clientes.slice();
   if (npCli && cliOpts.indexOf(npCli) < 0) cliOpts.unshift(npCli);
   var opts = d.artigos.slice().sort(function (x, y) { return x.cli.localeCompare(y.cli) || x.cod.localeCompare(y.cod); }).map(function (x) {
     return '<option value="' + esc(x.cod) + '"' + (x.cod === f.art ? ' selected' : '') + '>' + esc(x.cod + ' · ' + (x.cli || 'sem cliente') + (x.rota.length ? '' : ' (sem rota)')) + '</option>';
   }).join('');
-  var rota = a && a.rota.length
-    ? '<div class="row" style="gap:8px">' + a.rota.map(function (s, i) { return '<span class="tag"><span class="k">' + (i + 1) + '</span>' + esc(nm(s)) + '</span>'; }).join('') + '</div>'
+  var lista = ed ? ed.rota : (a ? a.rota : []);
+  var rota = lista.length
+    ? '<div class="row" style="gap:8px">' + lista.map(function (s, i) { return '<span class="tag"><span class="k">' + (i + 1) + '</span>' + esc(nm(s)) + '</span>'; }).join('') + '</div>'
     : '<div class="err">Este artigo ainda não tem rota. Defina os setores em Artigos e rotas antes de criar o pedido.</div>';
-
-  var h = '<h1>Novo pedido</h1><p class="sub mb">Ao criar, o pedido aparece na hora em todos os setores da rota do artigo.</p><div class="cols">' +
-    '<div class="col"><div class="form">' +
-    '<label class="f full" for="np-art">Artigo<select class="in" id="np-art">' + opts + '</select></label>' +
+  return '<div class="col" style="margin-bottom:18px;flex-basis:auto"><div class="row between" style="margin-bottom:14px"><h2 style="font-size:20px;margin:0">' + (ed ? 'Editar pedido #' + esc(ed.ped) : 'Novo pedido') + '</h2>' +
+    '<button class="btn ghost sm" data-a="np-cancel">' + (ed ? 'Cancelar edição' : 'Fechar') + '</button></div><div class="form">' +
+    (ed ? '<div class="f full">Artigo<div class="in mono" style="display:flex;align-items:center;background:var(--bg)">' + esc(ed.cod) + '</div><span class="muted" style="font-weight:500;font-size:13px">O artigo não muda depois de criado. Para trocar, exclua e crie de novo.</span></div>'
+        : '<label class="f full" for="np-art">Artigo<select class="in" id="np-art">' + opts + '</select></label>') +
     '<label class="f" for="np-ped">Nº do pedido<input class="in mono" id="np-ped" value="' + esc(f.ped) + '" placeholder="6801" autocomplete="off"></label>' +
     '<label class="f" for="np-qtd">Quantidade<input class="in mono" id="np-qtd" type="number" inputmode="numeric" min="1" step="1" value="' + esc(f.qtd) + '" placeholder="300"></label>' +
     '<label class="f" for="np-prazo">Data de entrega<input class="in" id="np-prazo" type="date" value="' + esc(f.prazo) + '"></label>' +
-    '<label class="f" for="np-cli">Cliente<select class="in" id="np-cli">' + cliOpts.map(function (c) { return '<option' + (c === npCli ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></label></div>' +
-    '<div class="box" style="margin-top:18px;background:var(--bg);border:none"><div style="font-size:14px;font-weight:700;margin-bottom:8px">Vai cair nestes setores agora</div>' + rota + '</div>' +
+    '<label class="f" for="np-cli">Cliente<select class="in" id="np-cli">' + cliOpts.map(function (c) { return '<option' + (c === npCli ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></label>' +
+    '<label class="f full" for="np-obs">Observação<input class="in" id="np-obs" value="' + esc(f.obs) + '" placeholder="Opcional" autocomplete="off"></label></div>' +
+    '<div class="box" style="margin-top:18px;background:var(--bg);border:none"><div style="font-size:14px;font-weight:700;margin-bottom:8px">' + (ed ? 'Setores deste pedido' : 'Vai cair nestes setores agora') + '</div>' + rota +
+    (ed ? '<div class="muted" style="font-size:13px;margin-top:8px">Para incluir ou tirar setores, abra o pedido em um setor e use o botão ···</div>' : '') + '</div>' +
     (f.err ? '<div class="err" role="alert" style="margin-top:12px">' + esc(f.err) + '</div>' : '') +
-    '<button class="btn pri wide" style="margin-top:16px" data-a="np-create"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Criando…' : 'Criar pedido') + '</button></div>';
+    '<button class="btn pri wide" style="margin-top:16px" data-a="np-create"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Salvando…' : ed ? 'Salvar alterações' : 'Criar pedido') + '</button></div>';
+}
 
-  var peds = d.pedidos.slice().sort(function (x, y) { return String(x.prazo).localeCompare(String(y.prazo)); });
-  h += '<div class="col"><h2 style="font-size:20px">Pedidos em aberto <span class="mono muted" style="font-size:16px">' + peds.length + '</span></h2><div class="alist">' +
-    (peds.length ? peds.map(function (p) {
-      return '<div><div class="row" style="gap:6px 12px;align-items:baseline"><b>' + esc(cliName(p)) + ' #' + esc(p.ped) + '</b><span class="mono" style="font-size:15px">' + esc(p.cod) + '</span>' +
-        '<span class="muted" style="font-size:14px">Prazo ' + br(p.prazo) + '</span>' + (isLate(p) ? '<span class="pill p-late">Atrasado</span>' : '') +
-        '<span class="muted" style="font-size:14px;margin-left:auto">Prontas <b class="mono" style="color:var(--ink)">' + lastDone(p) + '</b> de ' + p.total + '</span></div>' +
-        '<div style="font-size:14px;margin-top:6px"><b style="color:var(--or-ink)">' + p.rota.length + ' setores</b> · ' + p.rota.map(nm).map(esc).join(' → ') + '</div></div>';
-    }).join('') : '<p class="muted">Nenhum pedido em aberto.</p>') + '</div></div></div>';
+function pedSituacao(p) {
+  if (p.status === 'ENTREGUE') return '<span class="pill p-done">Finalizado</span>';
+  var ets = p.etapas || [];
+  var run = ets.filter(function (e) { return e.st === 'EXECUCAO'; }).length;
+  var late = p.prazo && p.prazo < hoje();
+  var h = run ? '<span class="pill" style="background:#EA580C;color:#fff">Produzindo</span>'
+    : ets.some(function (e) { return e.st !== 'AGUARDANDO' || e.feitas > 0; }) ? '<span class="pill p-pause">Em andamento</span>'
+    : '<span class="pill p-fila">Aguardando</span>';
+  return h + (late ? ' <span class="pill p-late">Atrasado</span>' : '');
+}
+
+function pedBarra(p) {
+  return '<span class="segs" style="min-width:120px">' + (p.etapas || []).map(function (e) {
+    var pct = p.total ? Math.min(100, Math.round(100 * e.feitas / p.total)) : 0;
+    return '<span class="seg' + (e.feitas >= p.total ? ' full' : '') + (e.st === 'EXECUCAO' ? ' run' : '') + '" title="' + esc(nm(e.sec)) + ': ' + e.feitas + '/' + p.total + '"><span style="width:' + pct + '%"></span></span>';
+  }).join('') + '</span>';
+}
+
+function pedAcoes(p) {
+  if (!tem('pcp')) return '';
+  return '<span class="row" style="gap:6px;flex-wrap:nowrap">' +
+    (p.status === 'ABERTO' ? '<button class="btn ghost sm" style="min-height:36px" data-a="ped-edit" data-pid="' + esc(p.pid) + '">Editar</button>' : '') +
+    '<button class="btn ghost sm" style="min-height:36px;color:var(--rd-ink);border-color:var(--rd-ink)" data-a="ped-del" data-pid="' + esc(p.pid) + '">Excluir</button></span>';
+}
+
+function vNovo() {
+  var P = S.pl;
+  if ((!P.list || (S.data && P.ver !== S.data.ver)) && !P.loading) setTimeout(loadPedidos, 0);
+  var all = P.list || [];
+  var abertos = all.filter(function (p) { return p.status === 'ABERTO'; });
+  var fins = all.filter(function (p) { return p.status === 'ENTREGUE'; });
+  var lateN = abertos.filter(function (p) { return p.prazo && p.prazo < hoje(); }).length;
+  var h = '<div class="row between mb"><div><h1>Pedidos</h1><p class="sub">Pedidos em produção e histórico dos finalizados. Toque em um pedido para ver cada setor.</p></div>' +
+    '<div class="row"><div class="stat"><div class="n">' + abertos.length + '</div><div class="l">em produção</div></div>' +
+    '<div class="stat"><div class="n" style="color:var(--rd-ink)">' + lateN + '</div><div class="l">atrasados</div></div>' +
+    '<div class="stat"><div class="n">' + fins.length + '</div><div class="l">finalizados</div></div>' +
+    (tem('pcp') && !S.np.show && !S.np.edit ? '<button class="btn pri md" data-a="np-show">' + I.plus + 'Novo pedido</button>' : '') + '</div></div>';
+  if (tem('pcp') && (S.np.show || S.np.edit)) h += pedForm();
+
+  h += '<div class="tools"><div class="seg-tabs" role="tablist">' +
+    [['ABERTO', 'Em produção', abertos.length], ['ENTREGUE', 'Finalizados', fins.length], ['', 'Todos', all.length]].map(function (t) {
+      return '<button role="tab" class="' + (P.filt === t[0] ? 'on' : '') + '" aria-selected="' + (P.filt === t[0]) + '" data-a="pl-filt" data-f="' + t[0] + '">' + t[1] + ' <span class="mono">' + t[2] + '</span></button>';
+    }).join('') + '</div>' +
+    '<label class="sr" for="pl-q">Buscar pedido</label><input id="pl-q" type="search" value="' + esc(P.q) + '" placeholder="Buscar por nº, cliente ou artigo" autocomplete="off">' +
+    '<button class="btn ghost md" data-a="pl-reload">Atualizar</button></div>';
+  h += '<div id="pl-tab">' + pedTabela() + '</div>';
   return h;
+}
+
+function pedTabela() {
+  var P = S.pl;
+  if (!P.list) return '<div class="loading" style="padding:40px 0">Carregando pedidos…</div>';
+  var q = P.q.trim().toLowerCase();
+  var arr = P.list.filter(function (p) {
+    if (P.filt && p.status !== P.filt) return false;
+    return !q || (p.ped + ' ' + (p.cli || '') + ' ' + p.cod + ' ' + (p.obs || '')).toLowerCase().indexOf(q) >= 0;
+  });
+  if (P.filt === 'ABERTO') arr.sort(function (a, b) { return String(a.prazo).localeCompare(String(b.prazo)); });
+  else arr.sort(function (a, b) { return String(b.entregue || b.criado).localeCompare(String(a.entregue || a.criado)); });
+  if (!arr.length) return '<div class="empty"><h2 style="margin:0">' + (q ? 'Nenhum pedido encontrado' : P.filt === 'ENTREGUE' ? 'Nenhum pedido finalizado ainda' : 'Nenhum pedido em produção') + '</h2></div>';
+  var fin = P.filt === 'ENTREGUE';
+  return '<div class="scroll"><table class="tbl"><thead><tr><th>Pedido</th><th>Cliente</th><th>Artigo</th><th>Qtd</th><th>Prazo</th><th>' + (fin ? 'Finalizado em' : 'Situação') + '</th><th>Andamento</th><th>Prontas</th><th></th></tr></thead><tbody>' +
+    arr.map(function (p) {
+      var open = P.open[p.pid];
+      var row = '<tr style="cursor:pointer' + (open ? ';background:#FAFAF8' : '') + '" data-a="pl-open" data-pid="' + esc(p.pid) + '">' +
+        '<td><b class="mono">#' + esc(p.ped) + '</b></td><td><b>' + esc(p.cli || 'Sem cliente') + '</b></td><td class="mono">' + esc(p.cod) + '</td>' +
+        '<td class="mono">' + p.total + '</td><td style="white-space:nowrap">' + br(p.prazo) + '</td>' +
+        '<td style="white-space:nowrap">' + (fin ? brData(p.entregue) + (p.entregue && p.prazo && p.entregue > p.prazo ? ' <span class="pill p-late" style="font-size:11px">com atraso</span>' : '') : pedSituacao(p)) + '</td>' +
+        '<td>' + pedBarra(p) + '</td><td class="mono" style="white-space:nowrap"><b>' + p.prontas + '</b>/' + p.total + '</td>' +
+        '<td>' + pedAcoes(p) + '</td></tr>';
+      if (open) {
+        row += '<tr><td colspan="9" style="background:#FAFAF8">' +
+          '<div class="row" style="gap:8px;margin-bottom:8px">' + (p.etapas || []).map(function (e) { return '<div><div class="muted" style="font-size:11px;font-weight:700;margin-bottom:2px">' + esc(nm(e.sec)) + (e.incl ? ' · incluído' : '') + '</div>' + cellPcp(e, p) + '</div>'; }).join('') + '</div>' +
+          '<div class="muted" style="font-size:13px">Criado em ' + brData(p.criado) + (p.entregue ? ' · finalizado em ' + brData(p.entregue) : '') + (p.obs ? ' · ' + esc(p.obs) : '') +
+          ' · <button class="linkbtn" style="min-height:0;padding:0" data-a="pcp-go" data-cod="' + esc(p.cod) + '">ver histórico do artigo</button></div></td></tr>';
+      }
+      return row;
+    }).join('') + '</tbody></table></div>';
 }
 
 /* ---------- Artigos e rotas ---------- */
@@ -1204,7 +1319,8 @@ function artList() {
     return '<div><div class="row" style="gap:6px 12px;align-items:baseline"><b class="mono">' + esc(a.cod) + '</b><span class="muted" style="font-weight:700;font-size:14px">' + esc(a.cli) + '</span>' +
       (a.desc ? '<span class="muted" style="font-size:14px">' + esc(a.desc) + '</span>' : '') +
       '<span class="muted" style="font-size:13px;margin-left:auto">' + (a.tempo ? esc(a.tempo) + ' min/pç' : '') + '</span>' +
-      '<button class="btn ghost sm" style="min-height:40px" data-a="fa-edit" data-cod="' + esc(a.cod) + '">Editar</button></div>' +
+      '<button class="btn ghost sm" style="min-height:40px" data-a="fa-edit" data-cod="' + esc(a.cod) + '">Editar</button>' +
+      '<button class="btn ghost sm" style="min-height:40px;color:var(--rd-ink);border-color:var(--rd-ink)" data-a="fa-del" data-cod="' + esc(a.cod) + '">Excluir</button></div>' +
       '<div style="font-size:14px;margin-top:6px">' + (a.rota.length
         ? '<b style="color:var(--or-ink)">' + a.rota.length + ' etapas</b> · ' + a.rota.map(nm).map(esc).join(' → ')
         : '<b style="color:var(--rd-ink)">Sem rota definida</b>') + '</div></div>';
@@ -1274,7 +1390,8 @@ function vEquipe() {
   h += '<details class="more-sec"><summary>Cadastro da equipe (' + fs.length + ')</summary><div class="list">' + fs.map(function (f) {
     return '<div><b>' + esc(f.nome) + '</b><span class="muted">' + esc(f.sec ? nm(f.sec) : 'sem setor') + '</span>' +
       (f.ativo ? '' : '<span class="pill p-fila">Inativo</span>') +
-      (podeCad ? '<button class="btn ghost sm" style="margin-left:auto;min-height:40px" data-a="ff-edit" data-f="' + esc(f.id) + '">Editar</button>' : '') + '</div>';
+      (podeCad ? '<button class="btn ghost sm" style="margin-left:auto;min-height:40px" data-a="ff-edit" data-f="' + esc(f.id) + '">Editar</button>' +
+        '<button class="btn ghost sm" style="min-height:40px;color:var(--rd-ink);border-color:var(--rd-ink)" data-a="ff-del" data-f="' + esc(f.id) + '">Excluir</button>' : '') + '</div>';
   }).join('') + '</div>' + (inat.length ? '<p class="muted" style="font-size:13px">Inativos não aparecem na escolha do responsável.</p>' : '') + '</details>';
   return h;
 }
@@ -1542,9 +1659,18 @@ document.addEventListener('click', function (ev) {
       uf.err = ''; render(); break;
     case 'usr-edit':
       var u = (S.usr.list || []).filter(function (x) { return x.id === id; })[0];
-      if (u) { S.usr.form = { email: u.email || '', nome: u.nome, perfis: u.perfis.slice(), ativo: u.ativo, editar: true, err: '' }; render(); window.scrollTo(0, 0); }
+      if (u) { S.usr.form = { id: u.id, email: u.email || '', nome: u.nome, perfis: u.perfis.slice(), ativo: u.ativo, editar: true, err: '' }; render(); window.scrollTo(0, 0); }
       break;
     case 'usr-novo': S.usr.form = null; render(); break;
+    case 'usr-remover':
+      var uf2 = S.usr.form;
+      if (uf2 && uf2.id && window.confirm('Remover o acesso de ' + uf2.nome + ' (' + uf2.email + ') ao NASAA?\n\nA pessoa não consegue mais entrar. Dá para liberar de novo depois.')) {
+        sb.rpc('remover_usuario', { p_id: uf2.id }).then(function (r) {
+          if (r.error) { toast(r.error.message, true); return; }
+          toast(uf2.nome + ' não tem mais acesso'); S.usr.form = null; S.usr.list = null; render();
+        });
+      }
+      break;
     case 'usr-salvar': salvarUsuario(); break;
     case 'reload': refresh(true); break;
     case 'tab': S.view = b.getAttribute('data-v'); S.conf = null; S.menu = null; S.ask = null; S.pick = null; if (S.view === 'equipe') S.eq.sel = null; if (S.view === 'usr') S.usr.list = null; applyPending(); render(); window.scrollTo(0, 0); break;
@@ -1602,7 +1728,7 @@ document.addEventListener('click', function (ev) {
     case 'finish': S.open[id] = true; S.conf = { id: id, mode: 'final', qty: e ? String(falta(e)) : '', err: '' }; S.menu = null; render(); focusEl('cq'); break;
     case 'conf-cancel': S.conf = null; applyPending(); render(); break;
     case 'conf-ok': confirmQty(); break;
-    case 'menu': S.menu = S.menu === id ? null : id; S.conf = null; if (!S.menu) applyPending(); render(); break;
+    case 'menu': S.menu = S.menu === id ? null : id; S.conf = null; S.cor = null; if (!S.menu) applyPending(); render(); break;
     case 'add-sec':
       var pid = b.getAttribute('data-pid'), sec = b.getAttribute('data-sec');
       S.menu = null;
@@ -1620,6 +1746,47 @@ document.addEventListener('click', function (ev) {
       break;
 
     case 'np-create': criarPedido(); break;
+    case 'np-cancel': limparPedido(); render(); break;
+    case 'np-show': limparPedido(); S.np.show = true; render(); focusEl('np-ped'); break;
+    case 'pl-filt': S.pl.filt = b.getAttribute('data-f'); S.pl.open = {}; render(); break;
+    case 'pl-reload': S.pl.list = null; loadPedidos(); render(); break;
+    case 'pl-open':
+      if (ev.target.closest('button')) break;
+      var op = b.getAttribute('data-pid'); if (S.pl.open[op]) delete S.pl.open[op]; else S.pl.open[op] = true;
+      var tb = document.getElementById('pl-tab'); if (tb) tb.innerHTML = pedTabela(); break;
+    case 'ped-edit': editarPedido(b.getAttribute('data-pid')); break;
+    case 'ped-del':
+      var dpid = b.getAttribute('data-pid'), dp = IX.ped[dpid] || (S.pl.list || []).filter(function (x) { return x.pid === dpid; })[0];
+      if (dp) excluir('Excluir o pedido #' + dp.ped + ' (' + cliName(dp) + ', ' + dp.cod + ')?\n\nSome de todos os setores, junto com os apontamentos e tempos dele. Não dá para desfazer.',
+        'excluirPedido', dp.pid, function () { if (S.np.edit === dp.pid) limparPedido(); S.menu = null; S.cor = null; delete S.open[id]; S.pl.list = null; render(); });
+      break;
+    case 'cor-ok':
+      var ce = IX.et[id], cq = document.getElementById('cor-q');
+      if (!ce || !cq) break;
+      var cv = Math.round(Number(cq.value)), cp = IX.ped[ce.pid];
+      if (cq.value.trim() === '' || isNaN(cv) || cv < 0) { S.cor = { id: id, qty: cq.value, err: 'Informe a quantidade de peças.' }; render(); break; }
+      if (cv > cp.total) { S.cor = { id: id, qty: cq.value, err: 'O pedido tem só ' + cp.total + ' peças.' }; render(); break; }
+      direct('corrigirEtapa', { id: id, feitas: cv }).then(function (ok) { if (ok) { S.cor = null; S.menu = null; render(); } });
+      break;
+    case 'reabrir':
+      var re = IX.et[id];
+      if (re && window.confirm('Reabrir ' + nm(re.sec) + ' no pedido #' + IX.ped[re.pid].ped + '?\n\nO setor volta para a lista como pausado, com as peças já lançadas.'))
+        direct('corrigirEtapa', { id: id, feitas: re.feitas, reabrir: true });
+      break;
+    case 'tirar-sec':
+      var te = IX.et[id];
+      if (te) excluir('Tirar ' + nm(te.sec) + ' do pedido #' + IX.ped[te.pid].ped + '?', 'removerSetor', id, function () { S.menu = null; delete S.open[id]; render(); });
+      break;
+    case 'fa-del':
+      var dc = b.getAttribute('data-cod');
+      excluir('Excluir o artigo ' + dc + '?\n\nSe ele já teve pedidos, sai da lista mas os pedidos antigos continuam no histórico.', 'excluirArtigo', dc,
+        function () { if (S.fa.cod === dc) { S.fa = { cod: '', cli: S.data.clientes[0] || '', desc: '', tempo: '', rota: [], err: '', editar: false, filtro: S.fa.filtro }; } render(); });
+      break;
+    case 'ff-del':
+      var df = IX.func[b.getAttribute('data-f')];
+      if (df) excluir('Excluir ' + df.nome + ' da equipe?\n\nO que ' + df.nome.split(' ')[0] + ' já fez continua nos relatórios, com o nome dele.', 'excluirFuncionario', df.id,
+        function () { if (S.eq.form && S.eq.form.id === df.id) { S.eq.form = null; S.eq.showForm = false; } render(); });
+      break;
 
     case 'fa-toggle':
       var s = b.getAttribute('data-sec'), r = S.fa.rota, k = r.indexOf(s);
@@ -1653,6 +1820,9 @@ document.addEventListener('input', function (ev) {
     case 'np-ped': S.np.ped = v; S.np.err = ''; break;
     case 'np-qtd': S.np.qtd = v; S.np.err = ''; break;
     case 'np-prazo': S.np.prazo = v; S.np.err = ''; break;
+    case 'np-obs': S.np.obs = v; break;
+    case 'pl-q': S.pl.q = v; document.getElementById('pl-tab').innerHTML = pedTabela(); break;
+    case 'cor-q': if (!S.cor || S.cor.id !== S.menu) S.cor = { id: S.menu, qty: v, err: '' }; else { S.cor.qty = v; S.cor.err = ''; } break;
     case 'fa-cod': S.fa.cod = v; S.fa.err = ''; break;
     case 'fa-cli': S.fa.cli = v; break;
     case 'fa-desc': S.fa.desc = v; break;
@@ -1692,15 +1862,43 @@ function confirmQty() {
     nm(e.sec) + ': ' + total + ' de ' + p.total + ' pç' + (fin || total >= p.total ? ' · setor concluído' : ''));
 }
 
+function limparPedido() {
+  S.np.ped = ''; S.np.qtd = ''; S.np.prazo = ''; S.np.obs = ''; S.np.err = ''; S.np.edit = null; S.np.show = false;
+  var a = IX.art[S.np.art]; S.np.cli = a ? a.cli : '';
+}
+
+function editarPedido(pid) {
+  var p = IX.ped[pid]; if (!p) return;
+  S.view = 'novo'; S.menu = null; S.cor = null;
+  S.np = { art: p.cod, cli: p.cli, ped: p.ped, qtd: String(p.total), prazo: p.prazo, obs: p.obs || '', err: '', edit: pid, show: false };
+  render(); window.scrollTo(0, 0); focusEl('np-ped');
+}
+
+/** Confirmação antes de excluir e gravação direta */
+function excluir(pergunta, fn, arg, depois) {
+  if (!window.confirm(pergunta)) return;
+  direct(fn, arg).then(function (ok) { if (ok && depois) depois(); });
+}
+
 function criarPedido() {
   var f = S.np, a = IX.art[f.art];
+  if (f.edit) {
+    if (!f.ped.trim()) { f.err = 'Informe o número do pedido.'; render(); focusEl('np-ped'); return; }
+    if (!(Math.round(Number(f.qtd)) >= 1)) { f.err = 'Informe a quantidade.'; render(); focusEl('np-qtd'); return; }
+    if (!f.prazo) { f.err = 'Informe a data de entrega.'; render(); focusEl('np-prazo'); return; }
+    var p0 = IX.ped[f.edit];
+    direct('editarPedido', { pid: f.edit, ped: f.ped.trim(), qtd: Math.round(Number(f.qtd)), prazo: f.prazo, cli: f.cli || (p0 ? p0.cli : ''), obs: f.obs.trim() }).then(function (ok) {
+      if (ok) { limparPedido(); render(); }
+    });
+    return;
+  }
   if (!a) { f.err = 'Escolha um artigo.'; render(); return; }
   if (!a.rota.length) { f.err = 'Este artigo não tem rota. Defina em Artigos e rotas.'; render(); return; }
   if (!f.ped.trim()) { f.err = 'Informe o número do pedido.'; render(); focusEl('np-ped'); return; }
   if (!(Math.round(Number(f.qtd)) >= 1)) { f.err = 'Informe a quantidade.'; render(); focusEl('np-qtd'); return; }
   if (!f.prazo) { f.err = 'Informe a data de entrega.'; render(); focusEl('np-prazo'); return; }
-  direct('criarPedido', { cod: f.art, cli: f.cli || a.cli, ped: f.ped.trim(), qtd: Math.round(Number(f.qtd)), prazo: f.prazo }).then(function (ok) {
-    if (ok) { S.np.ped = ''; S.np.qtd = ''; S.np.prazo = ''; render(); }
+  direct('criarPedido', { cod: f.art, cli: f.cli || a.cli, ped: f.ped.trim(), qtd: Math.round(Number(f.qtd)), prazo: f.prazo, obs: f.obs.trim() }).then(function (ok) {
+    if (ok) { limparPedido(); render(); }
   });
 }
 
